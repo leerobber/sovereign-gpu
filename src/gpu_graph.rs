@@ -56,6 +56,16 @@ pub struct GpuGraph {
 }
 
 impl GpuGraph {
+    /// Empty graph — used internally by UnifiedGpu; populate via load().
+    pub fn empty() -> Self {
+        Self::new(0, vec![])
+    }
+
+    /// Replace the graph data (preserves the GPU device).
+    pub fn load(&mut self, n_nodes: usize, edges: Vec<(u32, u32)>) {
+        self.graph = CsrGraph::from_edges(n_nodes, &edges);
+    }
+
     pub fn new(n_nodes: usize, edges: Vec<(u32, u32)>) -> Self {
         Self {
             graph: CsrGraph::from_edges(n_nodes, &edges),
