@@ -33,7 +33,7 @@ impl UnifiedGpu {
             webgpu_graph: Some(GpuGraph::empty()),
             cuda_graph:   CudaGraph::new(0, vec![]).ok(),
             vulkan_graph: VkGraph::new(0, vec![]).ok(),
-            gnn:          GpuGnnEmbed::new(),
+            gnn:          GpuGnnEmbed::new(32, 128),
             planner:      GpuPlanner::new(),
             backend,
         }
@@ -95,14 +95,26 @@ impl UnifiedGpu {
         }
     }
 
-    /// GNN embedding for `node_id`; returns a 128-dim f32 vector.
-    pub fn embed(&self, node_id: u32) -> Vec<f32> {
-        self.gnn.as_ref().map(|g| g.embed(node_id)).unwrap_or_default()
-    }
-
-    /// Batch GNN embedding for all nodes 0..n_nodes.
-    pub fn embed_all(&self, n_nodes: usize) -> Vec<Vec<f32>> {
-        self.gnn.as_ref().map(|g| g.embed_all(n_nodes)).unwrap_or_default()
+    /// GraphSAGE-Mean embedding for all nodes in one GPU dispatch.
+    ///
+    /// Args:
+    ///     row_ptr:    CSR row pointers (len = n_nodes + 1)
+    ///     col_idx:    CSR column indices (len = n_edges)
+    ///     node_feats: node feature matrix, row-major (n_nodes × feat_dim)
+    ///     weight:     projection matrix, row-major (feat_dim × embed_dim)
+    ///
+    /// Returns flattened embeddings (n_nodes × embed_dim).
+    pub fn embed(
+        &self,
+        row_ptr:    Vec<u32>,
+        col_idx:    Vec<u32>,
+        node_feats: Vec<f32>,
+        weight:     Vec<f32>,
+    ) -> Vec<f32> {
+        self.gnn
+            .as_ref()
+            .map(|g| g.embed(&row_ptr, &col_idx, &node_feats, &weight))
+            .unwrap_or_default()
     }
 
     /// Run the GPU planner pipeline on serialised block bytes.

@@ -119,4 +119,65 @@ impl GpuDevice {
         rb.unmap();
         result
     }
+
+    /// Upload an `f32` slice to a GPU storage buffer.
+    pub fn upload_f32(&self, data: &[f32], label: &str) -> wgpu::Buffer {
+        self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label:    Some(label),
+            contents: bytemuck::cast_slice(data),
+            usage:    wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC
+                    | wgpu::BufferUsages::COPY_DST,
+        })
+    }
+
+    /// Allocate an uninitialised GPU storage buffer for `n` f32 elements.
+    pub fn alloc_f32(&self, n: usize, label: &str) -> wgpu::Buffer {
+        self.device.create_buffer(&wgpu::BufferDescriptor {
+            label:              Some(label),
+            size:               (n * 4) as u64,
+            usage:              wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC
+                              | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })
+    }
+
+    /// Synchronously read a buffer back to a Vec<f32>.
+    pub fn readback_f32(&self, src: &wgpu::Buffer, n: usize) -> Vec<f32> {
+        let bytes = (n * 4) as u64;
+        let rb    = self.readback_buf(bytes);
+        self.copy_buf(src, &rb, bytes);
+        let slice = rb.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |r| { let _ = tx.send(r); });
+        self.device.poll(wgpu::Maintain::Wait);
+        rx.recv().unwrap().unwrap();
+        let view   = slice.get_mapped_range();
+        let result = bytemuck::cast_slice::<u8, f32>(&view).to_vec();
+        drop(view);
+        rb.unmap();
+        result
+    }
+
+    /// Build a BindGroup from an ordered slice of storage buffers.
+    /// Buffer `i` is bound at `@binding(i)` in the shader.
+    pub fn bind(
+        &self,
+        pipeline: &wgpu::ComputePipeline,
+        buffers:  &[&wgpu::Buffer],
+    ) -> wgpu::BindGroup {
+        let layout  = pipeline.get_bind_group_layout(0);
+        let entries: Vec<wgpu::BindGroupEntry> = buffers
+            .iter()
+            .enumerate()
+            .map(|(i, buf)| wgpu::BindGroupEntry {
+                binding:  i as u32,
+                resource: buf.as_entire_binding(),
+            })
+            .collect();
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label:   Some("bind_group"),
+            layout:  &layout,
+            entries: &entries,
+        })
+    }
 }
