@@ -1,0 +1,23 @@
+[package]
+name = "sovereign-gpu"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "sovereign_gpu"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3     = { version = "0.22", features = ["extension-module"] }
+wgpu     = { version = "0.20", optional = true }
+pollster = { version = "0.3",  optional = true }
+bytemuck = { version = "1.16", features = ["derive"], optional = true }
+
+[features]
+default  = ["webgpu"]
+webgpu   = ["dep:wgpu", "dep:pollster", "dep:bytemuck"]
+
+[profile.release]
+lto           = true
+opt-level     = 3
+codegen-units = 1
